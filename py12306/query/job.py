@@ -188,6 +188,23 @@ class Job:
         results = self.get_results(response)
         if not results:
             return False
+        # === DEBUG: 区间过滤统计 ===
+        # 12306 对同一车次会按"区间"返回多条记录(如 G6030 在
+        # 广州北→衡阳东 和广州南→衡阳东 各一条),本段统计每轮
+        # 被站名过滤掉的车次数,方便观察过滤逻辑是否生效
+        from py12306.helpers.station import Station
+        from_station_name = Station.get_station_name_by_key(self.left_station_code)
+        to_station_name = Station.get_station_name_by_key(self.arrive_station_code)
+        total_before = len(results)
+        filtered_station = sum(
+            1 for r in results
+            if r.split("|")[self.INDEX_LEFT_STATION] != self.left_station_code
+            or r.split("|")[self.INDEX_ARRIVE_STATION] != self.arrive_station_code
+        )
+        if filtered_station > 0:
+            print("[DEBUG station-filter] {f} -> {t} 本轮 {b} 条,过滤 {f0} 条,剩余 {a} 条".format(
+                f=from_station_name, t=to_station_name,
+                b=total_before, f0=filtered_station, a=total_before - filtered_station))
         for result in results:
             self.ticket_info = ticket_info = result.split('|')
             if not self.is_trains_number_valid():  # 车次是否有效
@@ -290,6 +307,17 @@ class Job:
         left_time = timedelta(
             hours=int(time_parts[0]), seconds=int(time_parts[1]))
         if left_time < self.from_time or left_time > self.to_time:
+            return False
+
+        # === FIX: 校验实际出发/到达站是否等于用户配置的站点 ===
+        # 12306 同一车次会按"区间"返回多条记录(如 G6030 在广州北→衡阳东
+        # 和广州南→衡阳东 各一条),原代码只校验时间和车次白黑名单,
+        # 不校验 from_station/to_station,导致买到了广州北→衡阳东
+        ticket_from = self.ticket_info[self.INDEX_LEFT_STATION]
+        ticket_to = self.ticket_info[self.INDEX_ARRIVE_STATION]
+        if ticket_from != self.left_station_code:
+            return False
+        if ticket_to != self.arrive_station_code:
             return False
 
         if self.except_train_numbers:
