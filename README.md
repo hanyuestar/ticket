@@ -301,6 +301,12 @@ A：编辑 `env.py` 中 `WEB_USER['password']`，或（若已用 Web 后台）�
 | 2026-08-27 | 修复购票起始站和查询站不一致问题 |
 | 2026-09-07 | 移除调试日志与死代码；提供开箱即用 Docker 部署；发布 v1.0.0 |
 
+### v1.0.1（2026-09-07 发布）
+
+- **修复 Web 管理后台登录 404**（登录接口 `/login` 与前端调用路径 `/user/login` 不一致，v1.0.0 及之前版本登录必定失败）
+- Docker Compose 改为接入 Docker 内置默认 bridge 网络（`network_mode: bridge`），不再创建项目网络，规避群晖等环境「could not find an available, non-overlapping IPv4 address pool」报错
+- v1.0.0 标签因上述登录缺陷已废弃删除，请直接使用 **v1.0.1** 及以上版本
+
 ### 社区原版历史
 - 支持分布式集群 / 配置文件动态修改 / 免费打码 / Web 页面 / 钉钉·Telegram·微信推送 / CDN 查询
 
