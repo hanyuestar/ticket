@@ -158,6 +158,16 @@ class QueryLog(BaseLog):
         return self
 
     @classmethod
+    def print_query_risk_rejected(cls):
+        """查询被 12306 风控拦截(302 -> error.html)的明确提示"""
+        self = cls()
+        self.add_quick_log('查询被 12306 风控拦截 (302 -> error.html)')
+        self.add_quick_log('设备指纹(RAIL_DEVICEID)可能缺失或失效，正在自动刷新后重试')
+        self.add_quick_log('若持续失败：浏览器打开 12306 查询页，F12 取 RAIL_DEVICEID/RAIL_EXPIRATION 填入 env.py 并设 CACHE_RAIL_ID_ENABLED=1')
+        self.flush(sep='\t')
+        return self
+
+    @classmethod
     def print_job_start(cls, job_name):
         self = cls()
         message = '>> 第 {query_count} 次查询 {job_name} {time}'.format(

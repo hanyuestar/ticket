@@ -268,7 +268,12 @@ class Job:
         :return:
         """
         if response.status_code != 200:
-            QueryLog.print_query_error(response.reason, response.status_code)
+            if response.status_code == 302 and 'error.html' in (response.headers.get('Location') or ''):
+                # 12306 风控拒绝（设备指纹缺失/失效），触发自愈
+                QueryLog.print_query_risk_rejected()
+                self.query.handle_query_rejected()
+            else:
+                QueryLog.print_query_error(response.reason, response.status_code)
             if self.interval_additional < self.interval_additional_max:
                 self.interval_additional += self.interval.get('min')
         else:

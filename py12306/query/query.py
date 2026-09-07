@@ -1,4 +1,7 @@
 from base64 import b64decode
+import threading
+import time
+
 from py12306.config import Config
 from py12306.cluster.cluster import Cluster
 from py12306.app import app_available_check
@@ -7,6 +10,7 @@ from py12306.helpers.request import Request
 from py12306.log.query_log import QueryLog
 from py12306.query.job import Job
 from py12306.helpers.api import API_QUERY_INIT_PAGE, API_GET_BROWSER_DEVICE_ID
+from py12306.helpers.device_id import fetch_device_id_by_browser, fetch_browser_session, is_browser_fingerprint_available
 
 
 @singleton
@@ -28,8 +32,15 @@ class Query:
     is_ready = False
     api_type = None  # Query api url, Current know value  leftTicket/queryX | leftTicket/queryZ
 
+    # 302 风控自愈：两次刷新之间的最小间隔（秒），防止多任务/多线程并发刷新风暴
+    REJECT_REFRESH_COOLDOWN = 60
+
     def __init__(self):
         self.session = Request()
+        self.last_reject_refresh_at = 0
+        self._reject_refresh_lock = threading.Lock()
+        self._browser_warmed = False
+        self.warm_up_session_by_browser()
         self.request_device_id()
         self.cluster = Cluster()
         self.update_query_interval()
@@ -119,14 +130,67 @@ class Query:
         self.jobs.append(job)
         return job
 
+    def warm_up_session_by_browser(self):
+        """
+        无头浏览器会话预热（应对 12306 会话风控的核心手段）。
+
+        2026-09 实测：查询接口 302 的根因不是缺少 RAIL_DEVICEID，而是
+        requests 会话缺少由浏览器 JS 建立的反爬 Cookie（_uab_collina /
+        JSESSIONID / BIGipServerotn / SF_cookie_2 等）。用无头浏览器打开
+        一次查询页，把整套 Cookie + UA 导入本会话后，查询即可恢复 200。
+
+        :return: True 表示预热成功
+        """
+        self._browser_warmed = True  # 无论成败均标记，避免后续重复开浏览器
+        if not is_browser_fingerprint_available():
+            QueryLog.add_quick_log('浏览器方案不可用(pyppeteer 未安装或已熔断)，跳过会话预热').flush()
+            return False
+        QueryLog.add_quick_log('正在通过无头浏览器预热会话(约需 10~30 秒)...').flush()
+        result = fetch_browser_session()
+        if not result:
+            QueryLog.add_quick_log('无头浏览器会话预热失败，将按原流程继续').flush()
+            return False
+        self.session.cookies.update(result['cookies'])
+        self.session.headers.update({'User-Agent': result['user_agent']})
+        QueryLog.add_quick_log(
+            '会话预热成功：已导入 {} 个浏览器 Cookie(含 {})'.format(
+                len(result['cookies']), '/'.join(sorted(result['cookies'])[:4]))
+        ).flush()
+        return True
+
     def request_device_id(self, force_renew = False):
         """
-        获取加密后的浏览器特征 ID
+        获取加密后的浏览器特征 ID (RAIL_DEVICEID / RAIL_EXPIRATION)
+
+        获取优先级：
+            1. env.py 手动配置 (CACHE_RAIL_ID_ENABLED=1 + RAIL_EXPIRATION/RAIL_DEVICEID)
+            2. 无头浏览器方案 (helpers/device_id.py，由 12306 自家指纹 JS 种 Cookie，抗算法改版)
+            3. 旧版 logdevice 流程（保底；12306 已加固，大概率 302 失败）
+
+        注：2026-09 实测余票查询并不强校验 RAIL_DEVICEID（会话预热即可通过），
+        本方法保留用于登录/下单等仍校验指纹的场景。
         :return:
         """
         expire_time =  self.session.cookies.get('RAIL_EXPIRATION')
         if not force_renew and expire_time and int(expire_time) - time_int_ms() > 0:
             return
+        if Config().is_cache_rail_id_enabled():
+            # 手动配置优先：不依赖任何可能被拦截的网络流程
+            self.session.cookies.update({
+                'RAIL_EXPIRATION': Config().RAIL_EXPIRATION,
+                'RAIL_DEVICEID': Config().RAIL_DEVICEID,
+            })
+            QueryLog.add_quick_log('设备指纹已从配置载入 (CACHE_RAIL_ID_ENABLED=1)').flush()
+            return
+        if is_browser_fingerprint_available() and not self._browser_warmed:
+            # 会话预热已由 warm_up_session_by_browser 完成时不再单独开浏览器
+            QueryLog.add_quick_log('正在通过无头浏览器获取设备指纹(约需 10~40 秒)...').flush()
+            result = fetch_device_id_by_browser()
+            if result:
+                self.session.cookies.update(result)
+                QueryLog.add_quick_log('设备指纹获取成功(无头浏览器)').flush()
+                return
+            QueryLog.add_quick_log('无头浏览器获取设备指纹失败，回退旧版 logdevice 流程...').flush()
         if 'pjialin' not in API_GET_BROWSER_DEVICE_ID:
             return self.request_device_id2()
         response = self.session.get(API_GET_BROWSER_DEVICE_ID)
@@ -182,7 +246,43 @@ class Query:
                         return
                 except Exception:
                     pass
+                QueryLog.add_quick_log(
+                    '设备指纹接口(logdevice)未返回有效签名，12306 可能已拦截旧版签名流程'
+                ).flush()
+            else:
+                QueryLog.add_quick_log(
+                    '设备指纹接口(logdevice)返回 {}，可能已被 12306 拦截'.format(response.status_code)
+                ).flush()
             sleep(3)
+        QueryLog.add_quick_log(
+            '旧版设备指纹流程获取失败；请在浏览器中打开 12306 查询页，'
+            '按 F12 取 RAIL_DEVICEID / RAIL_EXPIRATION 填入 env.py 并设 CACHE_RAIL_ID_ENABLED=1'
+        ).flush()
+
+    def handle_query_rejected(self):
+        """
+        查询被 12306 风控拦截(302 -> error.html)时的自愈入口。
+
+        刷新设备指纹与查询地址（api_type），带冷却时间与线程锁，
+        防止多任务/多线程并发刷新风暴。
+        """
+        acquired = self._reject_refresh_lock.acquire(timeout=5)
+        if not acquired:
+            return  # 其他线程正在刷新
+        try:
+            now = time.time()
+            if now - self.last_reject_refresh_at < self.REJECT_REFRESH_COOLDOWN:
+                return
+            self.last_reject_refresh_at = now
+        finally:
+            self._reject_refresh_lock.release()
+
+        QueryLog.add_quick_log('开始自愈：预热浏览器会话 + 刷新设备指纹与查询地址...').flush()
+        self.warm_up_session_by_browser()
+        self.api_type = None
+        self.request_device_id(force_renew=True)
+        self.get_query_api_type()
+        QueryLog.add_quick_log('风控自愈完成，下一轮查询将使用新会话').flush()
 
     @classmethod
     def wait_for_ready(cls):
