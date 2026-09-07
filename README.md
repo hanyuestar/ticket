@@ -100,7 +100,7 @@ pip install -r requirements.txt
 
 **2. 配置程序**
 ```bash
-# 项目已自带 env.py，可直接修改；如需模板可参考 env.py.example
+# 项目已自带 env.py（已纳入版本控制），直接修改即可
 ```
 
 **3. 启动前测试（校验配置与账号）**

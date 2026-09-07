@@ -9,7 +9,7 @@
 #   2. 在项目根目录执行：docker compose up -d --build
 #   3. 浏览器访问 http://<本机IP>:8008 （默认账号 admin / admin123，请尽快修改）。
 # 注意：本文件中的 /data/* 路径对应容器内数据卷；若改为本地直接运行，
-#       请将路径改为本机可写目录（可参考 env.py.example）。
+#       请将路径改为本机可写目录。
 # 验证码（自动下单必需）：默认 AUTO_CODE_PLATFORM='free' 指向的免费打码接口
 #       已停用，请改为 'user' + API_USER_CODE_QCR_API 指向自有 OCR 服务，
 #       或使用 'ruokuai' 若快平台；未配置 OCR 时仅能查询、无法自动下单。
