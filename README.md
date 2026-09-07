@@ -57,8 +57,8 @@ cd yiken123-py12306
 # 2. （可选）修改配置文件
 # 默认已启用 Web 管理；如需预置 12306 账号与查询任务，编辑 env.py
 
-# 3. 构建并启动
-docker-compose up -d --build
+# 3. 启动（默认拉取已发布镜像，无需本地构建）
+docker compose up -d
 
 # 4. 查看日志
 docker-compose logs -f
@@ -67,6 +67,26 @@ docker-compose logs -f
 启动后访问 **http://localhost:8008** 打开 Web 管理页面。
 
 > 默认登录账号：`admin` / `admin123`（请在 `env.py` 的 `WEB_USER` 中修改，避免弱口令暴露于公网）。
+
+### 镜像地址
+
+`docker-compose.yml` 默认使用已发布的容器镜像，无需本地构建：
+
+| 注册表 | 镜像地址 | 说明 |
+|--------|----------|------|
+| GitHub Container Registry（默认） | `ghcr.io/hanyuestar/ticket:latest` | compose 默认拉取 |
+| Docker Hub | `kyson666/ticket:latest` | 需显式指定 |
+
+```bash
+# 默认（ghcr.io）
+docker compose up -d
+
+# 切换到 Docker Hub
+IMAGE=kyson666/ticket:latest docker compose up -d
+
+# 基于本地源码构建（修改代码后）
+docker compose build && docker compose up -d
+```
 
 ### 数据持久化
 - 静态配置：`./env.py`（挂载到容器 `/config/env.py`，只读）

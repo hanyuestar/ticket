@@ -16,6 +16,10 @@ version: "3.8"
 
 services:
   py12306:
+    # 默认使用已发布镜像，开箱即用（无需本地构建）
+    # 切换到 Docker Hub：IMAGE=kyson666/ticket:latest docker compose up -d
+    # 基于本地源码构建：docker compose build && docker compose up -d
+    image: ${IMAGE:-ghcr.io/hanyuestar/ticket:latest}
     build: .
     container_name: py12306
     restart: unless-stopped
