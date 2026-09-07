@@ -1,0 +1,40 @@
+# ============================================================
+# py12306 优化版 · 单节点 Docker 独立部署配置（开箱即用）
+# ------------------------------------------------------------
+# 部署方式：单台主机 Docker Compose 部署。
+#   - 无需外部数据库 / Redis（默认关闭集群功能）。
+#   - 不依赖任何上游仓库，全部构建自本仓库根目录 Dockerfile。
+#   - 数据持久化于本地命名卷 py12306_data（日志 / 乘客 / Cookie / 查询缓存）。
+# 使用步骤：
+#   1. 按需修改同目录 env.py（默认已启用 Web 管理后台，无需 12306 账号即可启动）。
+#   2. 在项目根目录执行：docker compose up -d --build
+#   3. 浏览器访问 http://<本机IP>:8008 （默认账号 admin / admin123，请尽快修改）。
+# 构建说明：基于仓库根目录 Dockerfile（python:3.11-slim），
+#           pyppeteer Chromium 已在镜像内预下载，首次启动无需联网下载浏览器。
+# ============================================================
+version: "3.8"
+
+services:
+  py12306:
+    build: .
+    container_name: py12306
+    restart: unless-stopped
+    ports:
+      - "8008:8008"
+    volumes:
+      # 配置文件挂载（修改后重启容器生效）
+      - ./env.py:/config/env.py:ro
+      # 运行时数据持久化（日志、乘客信息、查询缓存）
+      - py12306_data:/data
+    environment:
+      - TZ=Asia/Shanghai
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8008/', timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
+volumes:
+  py12306_data:
+    driver: local

@@ -4,7 +4,6 @@
 .DS_Store
 venv
 __pycache__
-env.py
-env.slave.py
-env.docker.py
-docker-compose.yml
+# 开箱即用配置文件（env.py / docker-compose.yml 等）已纳入版本控制，便于直接部署
+# 如希望保留本地私有配置不被提交，可自行加回忽略或使用其他文件名
+# env.py.example / docker-compose.yml.example / env.docker.py.example 仍作为模板保留
