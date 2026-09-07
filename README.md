@@ -3,55 +3,93 @@
 
 ## Features
 - [x] 多日期查询余票
-- [x] 自动打码下单
-- [x] 用户状态恢复
+- [x] 自动打码下单（完整抢票链路：查询→验票→提交订单→确认支付）
+- [x] 用户状态恢复（Cookie 持久化）
 - [x] 电话语音通知
 - [x] 多账号、多任务、多线程支持
-- [x] 单个任务多站点查询 
+- [x] 单个任务多站点查询
 - [x] 分布式运行
-- [x] Docker 支持
-- [x] 动态修改配置文件
+- [x] Docker 支持（docker-compose 一键部署）
+- [x] Web 管理后台（账号管理、扫码登录、任务管理、实时日志、仪表盘）
 - [x] 邮件通知
-- [x] Web 管理页面
 - [x] 微信消息通知
-- [ ] 代理池支持 ([pyproxy-async](https://github.com/pjialin/pyproxy-async))
+- [ ] 代理池支持
 
-## 使用
-py12306 需要运行在 python 3.6 以上版本（其它版本暂未测试)
+## 快速开始（Docker 部署，推荐）
+
+### 前置要求
+- Docker & Docker Compose
+- 无需额外部署数据库（项目使用本地文件存储）
+- 无需 Redis（单机模式默认关闭集群功能）
+
+### 一键部署
+
+```bash
+# 1. 克隆或进入项目目录
+cd yiken123-py12306
+
+# 2. 修改配置文件（可选，默认已启用 Web 管理）
+# 编辑 env.py，设置 12306 账号、查询任务、通知方式等
+# vim env.py
+
+# 3. 构建并启动
+docker-compose up -d --build
+
+# 4. 查看日志
+docker-compose logs -f
+```
+
+启动后访问 **http://localhost:8008** 即可打开 Web 管理页面。
+
+默认登录账号：`admin` / `admin123`（可在 `env.py` 的 `WEB_USER` 中修改）
+
+### 数据持久化
+- 静态配置：`./env.py`（挂载到容器 `/config/env.py`，只读）
+- 运行数据：Docker 命名卷 `py12306_data`（挂载到 `/data`）
+  - 动态配置：`/data/config.json`（Web 后台添加的账号和任务）
+  - 日志文件：`/data/12306.log`
+  - 乘客信息：`/data/user/*_passengers.json`
+  - 登录 Cookie：`/data/user/*.cookie`
+  - 登录二维码：`/data/user/qrcode/*.png`
+  - 查询缓存：`/data/query/`
+
+### 常用命令
+
+```bash
+# 启动
+docker-compose up -d
+
+# 停止
+docker-compose down
+
+# 重启
+docker-compose restart
+
+# 查看实时日志
+docker-compose logs -f
+
+# 修改配置后重启生效
+docker-compose restart
+```
+
+## 本地运行
+
+py12306 需要运行在 Python 3.11 以上版本。
 
 **1. 安装依赖**
 ```bash
-git clone https://github.com/pjialin/py12306
-
 pip install -r requirements.txt
 ```
 
 **2. 配置程序**
 ```bash
-cp env.py.example env.py
+# 复制配置文件（项目已自带 env.py，可直接修改）
+cp env.py.example env.py  # 如需要模板
 ```
-自动打码
-
-（若快已停止服务，目前只能设置**free**打码模式）
-free 已对接到打码共享平台，[https://py12306-helper.pjialin.com](https://py12306-helper.pjialin.com/)，欢迎参与分享
-
-语音通知
-
-语音验证码使用的是阿里云 API 市场上的一个服务商，需要到 [https://market.aliyun.com/products/56928004/cmapi026600.html](https://market.aliyun.com/products/56928004/cmapi026600.html) 购买后将 appcode 填写到配置中
 
 **3. 启动前测试**
-
-目前提供了一些简单的测试，包括用户账号检测，乘客信息检测，车站检测等
-
-开始测试 -t 
 ```bash
 python main.py -t
-```
-
-测试通知消息 (语音, 邮件) -t -n
-```bash
-# 默认不会进行通知测试，要对通知进行测试需要加上 -n 参数 
-python main.py -t -n
 ```
 
 **4. 运行程序**
@@ -60,100 +98,122 @@ python main.py
 ```
 
 ### 参数列表
+- `-t` 测试配置信息
+- `-t -n` 测试配置信息以及通知消息
+- `-c` 指定自定义配置文件位置
 
-- -t 测试配置信息
-- -t -n 测试配置信息以及通知消息
-- -c 指定自定义配置文件位置
+## 配置说明
 
-### 分布式集群
-
-集群依赖于 redis，目前支持情况
-- 单台主节点多个子节点同时运行
-- 主节点宕机后自动切换提升子节点为主节点
-- 主节点恢复后自动恢复为真实主节点
-- 配置通过主节点同步到所有子节点
-- 主节点配置修改后无需重启子节点，支持自动更新
-- 子节点消息实时同步到主节点
-
-**使用**
-
-将配置文件的中 `CLUSTER_ENABLED` 打开即开启分布式
-
-目前提供了一个单独的子节点配置文件 `env.slave.py.example` 将文件修改为 `env.slave.py`， 通过 `python main.py -c env.slave.py` 即可快速启动
-
-
-## Docker 使用
-**1. 将配置文件下载到本地**
-```bash
-docker run --rm pjialin/py12306 cat /config/env.py > env.py
-# 或
-curl https://raw.githubusercontent.com/pjialin/py12306/master/env.docker.py.example -o env.py
+### Web 管理
+```python
+WEB_ENABLE = 1
+WEB_USER = {
+    'username': 'admin',
+    'password': 'admin123'
+}
+WEB_PORT = 8008
 ```
 
-**2. 修改好配置后运行**
-```bash
-docker run --rm --name py12306 -p 8008:8008 -d -v $(pwd):/config -v py12306:/data pjialin/py12306
+### 12306 账号
+```python
+USER_ACCOUNTS = [
+    {
+        'key': 0,
+        'user_name': 'your_user_name',
+        'password': 'your_password',
+        'type': 'qr'  # qr 扫码登录，其他为密码登录
+    },
+]
 ```
-当前目录会多一个 12306.log 的日志文件， `tail -f 12306.log`
+留空则仅查询余票，不自动下单。
 
-### Docker-compose 中使用
-**1. 复制配置文件**
+### 查询任务
+```python
+QUERY_JOBS = [
+    {
+        'account_key': 0,
+        'left_dates': ['2026-10-01'],
+        'stations': {'left': '北京', 'arrive': '深圳'},
+        'members': ['张三'],
+        'seats': ['硬卧', '硬座'],
+        'train_numbers': [],
+    },
+]
 ```
-cp docker-compose.yml.example docker-compose.yml
-```
 
-**2. 从 docker-compose 运行**
+### 通知方式
+支持：语音电话、钉钉、Telegram、ServerChan、PushBear、Bark、邮件。在 `env.py` 中对应配置项开启即可。
 
-在`docker-compose.yml`所在的目录使用命令
-```
-docker-compose up -d
-```
+## 关于数据库
 
-## Web 管理页面
+本项目**不需要**额外部署数据库：
+- 车站代码：`data/stations.txt`（已内置）
+- CDN 列表：`data/cdn.txt`（已内置）
+- 乘客信息：运行时自动生成 JSON 文件
+- 查询缓存：运行时自动生成
+- 日志：文本文件
 
-目前支持用户和任务以及实时日志查看，更多功能后续会不断加入
+Redis 仅在分布式集群模式下需要，单机部署默认关闭（`CLUSTER_ENABLED = 0`）。
 
-**使用**
+## Web 管理后台
 
-打开 Web 功能需要将配置中的 `WEB_ENABLE` 打开，启动程序后访问当前主机地址 + 端口号 (默认 8008) 即可，如 http://127.0.0.1:8008
+启动后访问 `http://主机IP:8008`，默认账号 `admin` / `admin123`。
 
-## 更新
-- 19-01-10
-    - 支持分布式集群
-- 19-01-11
-    - 配置文件支持动态修改
-- 19-01-12
-    - 新增免费打码
-- 19-01-14
-    - 新增 Web 页面支持
-- 19-01-15
-    - 新增 钉钉通知
-    - 新增 Telegram 通知
-    - 新增 ServerChan 和 PushBear 微信推送
-- 19-01-18
-    - 新增 CDN 查询
+### 功能模块
 
-## 截图
-### Web 管理页面
-![Web 管理页面图片](https://github.com/pjialin/py12306/blob/master/data/images/web.png)
+**📊 仪表盘**
+- 账号数、已登录数、任务数、运行中任务、累计查询次数
+- 系统运行状态（Web/集群/CDN/日志）
 
-### 下单成功
-![下单成功图片](https://github.com/pjialin/py12306/blob/master/data/images/order_success.png)
+**👤 账号管理（核心功能）**
+- **添加 12306 账号**：支持扫码登录（推荐）和密码登录两种方式
+- **扫码登录**：点击"扫码登录"按钮，页面显示二维码，用 12306 APP 扫描即可完成登录，无需在配置文件中填写密码
+- **切换账号**：可添加多个 12306 账号，每个抢票任务可指定使用不同账号
+- **乘客列表**：查看已登录账号的常用联系人
+- **删除账号**：移除不需要的账号
+- 所有账号变更自动保存，容器重启后自动恢复
 
-### 关于防封
-目前查询和登录操作是分开的，查询是不依赖用户是否登录，放在 A 云 T 云容易被限制 ip，建议在其它网络环境下运行
+**🎫 抢票任务管理**
+- **新建任务**：选择已登录账号、填写出发日期、出发站/到达站（支持搜索自动补全）、乘客、座位类型、指定车次、时间范围
+- **任务列表**：查看所有任务状态（运行中/待启动）
+- **删除任务**：移除不需要的抢票任务
+- 任务创建后立即开始运行，自动查询余票并在有票时自动提交订单
 
-QQ 交流群 [780289875](https://jq.qq.com/?_wv=1027&k=5PgzDwV)，TG 群 [Py12306 交流](https://t.me/joinchat/F3sSegrF3x8KAmsd1mTu7w)
+**📋 实时日志**
+- 实时查看程序运行日志
+- 支持自动滚动、手动刷新
 
-### Online IDE
-[![在 Gitpod 中打开](https://gitpod.io/button/open-in-gitpod.svg)](https://gitpod.io#https://github.com/pjialin/py12306)
+### 抢票完整流程
+
+1. 在"账号管理"中添加 12306 账号并完成扫码登录
+2. 在"抢票任务"中新建任务，选择账号、填写行程和乘客
+3. 系统自动循环查询余票，发现符合条件的车票后自动提交订单
+4. 下单成功后可在 12306 APP 中完成支付
+5. 支持多账号同时运行，不同任务可使用不同账号
+
+### 动态配置持久化
+
+通过 Web 后台添加的账号和任务保存在 `/data/config.json` 中（Docker 数据卷持久化），容器重启后自动加载，无需修改 `env.py` 配置文件。
+
+## 分布式集群
+
+集群依赖 Redis，支持主节点自动切换、配置同步等。将 `CLUSTER_ENABLED` 设为 `1` 并配置 Redis 连接即可开启。
+
+## 更新日志
+- 19-01-10 支持分布式集群
+- 19-01-11 配置文件支持动态修改
+- 19-01-12 新增免费打码
+- 19-01-14 新增 Web 页面支持
+- 19-01-15 新增钉钉/Telegram/微信推送
+- 19-01-18 新增 CDN 查询
+
+## 关于防封
+查询和登录操作是分开的，查询不依赖用户是否登录。建议在家庭宽带等非云服务器环境下运行。
 
 ## Thanks
-- 感谢大佬 [testerSunshine](https://github.com/testerSunshine/12306)，借鉴了部分实现
-- 感谢所有提供 pr 的大佬 
-- 感谢大佬 [zhaipro](https://github.com/zhaipro/easy12306) 的验证码本地识别模型与算法
+- 感谢 [testerSunshine](https://github.com/testerSunshine/12306)，借鉴了部分实现
+- 感谢所有提供 PR 的贡献者
+- 感谢 [zhaipro](https://github.com/zhaipro/easy12306) 的验证码本地识别模型与算法
 
 ## License
-
 [Apache License.](https://github.com/pjialin/py12306/blob/master/LICENSE)
-

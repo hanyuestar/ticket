@@ -15,15 +15,8 @@ app = Blueprint('app', __name__)
 @app.route('/', methods=['GET', 'POST'])
 def index():
     file = Config().WEB_ENTER_HTML_PATH
-    result = ''
     with open(file, 'r', encoding='utf-8') as f:
         result = f.read()
-        config = {
-            'API_BASE_URL': ''  # TODO 自定义 Host
-        }
-        result = re.sub(r'<script>[\s\S]*?<\/script>', '<script>window.config={}</script>'.format(json.dumps(config)),
-                        result)
-
     return result
 
 

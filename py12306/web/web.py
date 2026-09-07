@@ -33,11 +33,13 @@ class Web:
         from py12306.web.handler.app import app
         from py12306.web.handler.query import query
         from py12306.web.handler.log import log
+        from py12306.web.handler.manage import manage
         self.session.register_blueprint(user)
         self.session.register_blueprint(stat)
         self.session.register_blueprint(app)
         self.session.register_blueprint(query)
         self.session.register_blueprint(log)
+        self.session.register_blueprint(manage)
 
     @classmethod
     def run(cls):

@@ -121,6 +121,9 @@ class Config:
     def __init__(self):
         self.init_envs()
         self.last_modify_time = get_file_modify_time(self.CONFIG_FILE)
+        # 加载 Web 端动态配置（账号和任务），覆盖 env.py
+        from py12306.helpers.config_manager import load_dynamic_config
+        load_dynamic_config()
         if Config().is_slave():
             self.refresh_configs(True)
         else:

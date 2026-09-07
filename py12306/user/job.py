@@ -45,6 +45,7 @@ class UserJob:
     cluster = None
     lock_init_user_time = 3 * 60
     cookie = False
+    current_qrcode_path = None  # 当前登录二维码图片路径(供Web端显示)
 
     def __init__(self, info):
         self.cluster = Cluster()
@@ -263,6 +264,7 @@ class UserJob:
                 with open(png_path, 'wb') as file:
                     file.write(img_bytes)
                     file.close()
+                self.current_qrcode_path = png_path
                 if os.name == 'nt':
                     os.startfile(png_path)
                 else:
@@ -482,6 +484,25 @@ class UserJob:
         stay_second(self.retry_time)
         return self.wait_for_ready()
 
+    def force_relogin(self):
+        """
+        强制重新登录（Web端触发）
+        清除 cookie 和登录状态，下次心跳检测时会自动重新登录
+        """
+        self.is_ready = False
+        self.user_loaded = False
+        self.passengers = []
+        self.set_last_heartbeat(0)
+        self.current_qrcode_path = None
+        cookie_path = self.get_cookie_path()
+        if os.path.exists(cookie_path):
+            try:
+                os.remove(cookie_path)
+            except Exception:
+                pass
+        UserLog.add_quick_log('账号 {} 已触发重新登录'.format(self.user_name)).flush()
+        return True
+
     def destroy(self):
         """
         退出用户
@@ -503,10 +524,8 @@ class UserJob:
         for _ in range(max_retry):
             try:
                 response = self.session.post(API_USER_PASSENGERS, data={'pageIndex': 1, 'pageSize': 10})
-                print('[DEBUG passengers] status={} body={}'.format(response.status_code, response.text[:500]))
                 result = response.json()
                 datas = result.get('data') and result.get('data').get('datas') or result.get('data.datas')
-                print('[DEBUG datas] datas={}'.format(datas))
             except Exception:
                 stay_second(get_interval_num(self.sleep_interval))
                 continue
@@ -611,10 +630,6 @@ class UserJob:
             'X-Requested-With': 'XMLHttpRequest',
         }
         response = self.session.get(API_INITDC_URL, headers=headers)
-        print('[DEBUG initdc] status={} ct={} body[:200]={}'.format(
-            response.status_code,
-            response.headers.get('Content-Type', '?'),
-            response.text[:200] if response.text else 'EMPTY'))
 
         # 优先按 JSON 解析(2026 改版后格式)
         try:
@@ -630,14 +645,9 @@ class UserJob:
                     self.order_request_dto = order
                     # 滑块验证码标记,新接口放在 data.if_check_slide_passcode
                     is_slide = str(dc_data.get('if_check_slide_passcode', '0')) == '1'
-                    print('[DEBUG initdc] OK token={} form_type={} order_type={} is_slide={}'.format(
-                        bool(token), type(form).__name__, type(order).__name__, is_slide))
                     return True, is_slide, response.text
-                else:
-                    print('[DEBUG initdc] JSON but missing fields token={} form={} order={}'.format(
-                        bool(token), bool(form), bool(order)))
-        except Exception as e:
-            print('[DEBUG initdc] JSON parse failed: {}'.format(e))
+        except Exception:
+            pass
 
         # 回退:旧版 HTML 内嵌 JS 变量解析
         html = response.text
@@ -658,14 +668,11 @@ class UserJob:
             # 防伪:首页 HTML 含 var ticketInfoForPassengerForm = null 时会被解析成 None,
             # 这种"假 token"必须拒绝,否则下游 None[...] 会崩
             if form_val is None or order_val is None or not token_val:
-                print('[DEBUG initdc] FAKE token from homepage html (form/order is None) reject')
                 return False, False, html
             self.global_repeat_submit_token = token_val
             self.ticket_info_for_passenger_form = form_val
             self.order_request_dto = order_val
         except Exception as e:
-            print('[DEBUG initdc] FAILED token={} form={} order={} err={} html[200:500]={}'.format(
-                bool(token), bool(form), bool(order), e, html[200:500]))
             return False, False, html  # TODO Error
 
         slide_val = re.search(r"var if_check_slide_passcode.*='(\d?)'", html)

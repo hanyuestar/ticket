@@ -188,23 +188,6 @@ class Job:
         results = self.get_results(response)
         if not results:
             return False
-        # === DEBUG: 区间过滤统计 ===
-        # 12306 对同一车次会按"区间"返回多条记录(如 G6030 在
-        # 广州北→衡阳东 和广州南→衡阳东 各一条),本段统计每轮
-        # 被站名过滤掉的车次数,方便观察过滤逻辑是否生效
-        from py12306.helpers.station import Station
-        from_station_name = Station.get_station_name_by_key(self.left_station_code)
-        to_station_name = Station.get_station_name_by_key(self.arrive_station_code)
-        total_before = len(results)
-        filtered_station = sum(
-            1 for r in results
-            if r.split("|")[self.INDEX_LEFT_STATION] != self.left_station_code
-            or r.split("|")[self.INDEX_ARRIVE_STATION] != self.arrive_station_code
-        )
-        if filtered_station > 0:
-            print("[DEBUG station-filter] {f} -> {t} 本轮 {b} 条,过滤 {f0} 条,剩余 {a} 条".format(
-                f=from_station_name, t=to_station_name,
-                b=total_before, f0=filtered_station, a=total_before - filtered_station))
         for result in results:
             self.ticket_info = ticket_info = result.split('|')
             if not self.is_trains_number_valid():  # 车次是否有效

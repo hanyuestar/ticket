@@ -1,3 +1,841 @@
-<!DOCTYPE html><html><head><meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1"><title>py12306 购票助手</title><link href=../../static/css/app.7dba7f569524413218fde54c298188f4.css rel=stylesheet></head><body><script>window.config = {
-        API_BASE_URL: 'http://localhost:8008/',
-    }</script><div id=app></div><script type=text/javascript src=../../static/js/manifest.82f431004cf9bb6ad2cb.js></script><script type=text/javascript src=../../static/js/vendor.aebd1de04bf90e88d9c7.js></script><script type=text/javascript src=../../static/js/app.cdb00779aeb087dabd94.js></script></body></html>
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>py12306 购票助手 - 管理后台</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background: #f0f2f5; color: #333; }
+
+/* Login */
+.login-wrap { display: flex; justify-content: center; align-items: center; height: 100vh; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); }
+.login-box { background: #fff; padding: 40px; border-radius: 12px; box-shadow: 0 20px 60px rgba(0,0,0,0.3); width: 360px; }
+.login-box h1 { text-align: center; margin-bottom: 8px; color: #333; font-size: 24px; }
+.login-box p { text-align: center; color: #999; margin-bottom: 30px; font-size: 14px; }
+.login-box input { width: 100%; padding: 12px 16px; border: 1px solid #ddd; border-radius: 8px; margin-bottom: 16px; font-size: 14px; transition: border 0.3s; }
+.login-box input:focus { outline: none; border-color: #667eea; }
+.login-box button { width: 100%; padding: 12px; background: linear-gradient(135deg, #667eea, #764ba2); color: #fff; border: none; border-radius: 8px; font-size: 16px; cursor: pointer; transition: opacity 0.3s; }
+.login-box button:hover { opacity: 0.9; }
+.login-error { color: #e74c3c; text-align: center; margin-top: 12px; font-size: 13px; min-height: 18px; }
+
+/* Layout */
+.app { display: flex; min-height: 100vh; }
+.sidebar { width: 220px; background: #001529; color: #fff; flex-shrink: 0; }
+.sidebar-header { padding: 20px; border-bottom: 1px solid #1f3a5f; }
+.sidebar-header h2 { font-size: 18px; color: #fff; }
+.sidebar-header span { font-size: 12px; color: #8c9eb5; }
+.nav-item { padding: 14px 20px; cursor: pointer; transition: background 0.2s; display: flex; align-items: center; gap: 10px; font-size: 14px; color: #c0c9d4; }
+.nav-item:hover { background: #1f3a5f; color: #fff; }
+.nav-item.active { background: #1890ff; color: #fff; }
+.nav-item .icon { width: 18px; text-align: center; }
+
+.main { flex: 1; display: flex; flex-direction: column; }
+.topbar { background: #fff; padding: 0 24px; height: 56px; display: flex; align-items: center; justify-content: space-between; box-shadow: 0 1px 4px rgba(0,0,0,0.08); }
+.topbar h3 { font-size: 16px; color: #333; }
+.topbar-right { display: flex; align-items: center; gap: 16px; }
+.status-badge { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; padding: 4px 12px; border-radius: 12px; background: #f6ffed; color: #52c41a; border: 1px solid #b7eb8f; }
+.status-badge.offline { background: #fff2f0; color: #ff4d4f; border-color: #ffccc7; }
+.logout-btn { color: #999; cursor: pointer; font-size: 14px; background: none; border: none; }
+.logout-btn:hover { color: #ff4d4f; }
+
+.content { padding: 24px; flex: 1; overflow-y: auto; }
+.page { display: none; }
+.page.active { display: block; }
+
+/* Cards */
+.card { background: #fff; border-radius: 8px; padding: 20px; margin-bottom: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.06); }
+.card-title { font-size: 16px; font-weight: 600; margin-bottom: 16px; color: #333; display: flex; justify-content: space-between; align-items: center; }
+
+/* Stats */
+.stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 24px; }
+.stat-card { background: #fff; border-radius: 8px; padding: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.06); }
+.stat-card .label { font-size: 13px; color: #999; margin-bottom: 8px; }
+.stat-card .value { font-size: 28px; font-weight: 700; color: #333; }
+.stat-card .value.green { color: #52c41a; }
+.stat-card .value.blue { color: #1890ff; }
+.stat-card .value.orange { color: #fa8c16; }
+
+/* Buttons */
+.btn { padding: 8px 16px; border: none; border-radius: 6px; cursor: pointer; font-size: 13px; transition: all 0.2s; display: inline-flex; align-items: center; gap: 6px; }
+.btn-primary { background: #1890ff; color: #fff; }
+.btn-primary:hover { background: #40a9ff; }
+.btn-danger { background: #ff4d4f; color: #fff; }
+.btn-danger:hover { background: #ff7875; }
+.btn-success { background: #52c41a; color: #fff; }
+.btn-success:hover { background: #73d13d; }
+.btn-warning { background: #fa8c16; color: #fff; }
+.btn-warning:hover { background: #ffa940; }
+.btn-default { background: #fff; color: #666; border: 1px solid #ddd; }
+.btn-default:hover { border-color: #1890ff; color: #1890ff; }
+.btn-sm { padding: 4px 10px; font-size: 12px; }
+.btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* Tables */
+table { width: 100%; border-collapse: collapse; }
+th, td { padding: 12px; text-align: left; border-bottom: 1px solid #f0f0f0; font-size: 13px; }
+th { background: #fafafa; color: #666; font-weight: 600; }
+tr:hover { background: #fafafa; }
+
+/* Badges */
+.badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 12px; }
+.badge-success { background: #f6ffed; color: #52c41a; border: 1px solid #b7eb8f; }
+.badge-error { background: #fff2f0; color: #ff4d4f; border: 1px solid #ffccc7; }
+.badge-warning { background: #fffbe6; color: #faad14; border: 1px solid #ffe58f; }
+.badge-info { background: #e6f7ff; color: #1890ff; border: 1px solid #91d5ff; }
+
+/* Modal */
+.modal-overlay { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 1000; justify-content: center; align-items: center; }
+.modal-overlay.show { display: flex; }
+.modal { background: #fff; border-radius: 12px; width: 480px; max-height: 90vh; overflow-y: auto; box-shadow: 0 20px 60px rgba(0,0,0,0.3); }
+.modal-header { padding: 20px 24px; border-bottom: 1px solid #f0f0f0; display: flex; justify-content: space-between; align-items: center; }
+.modal-header h3 { font-size: 18px; }
+.modal-close { background: none; border: none; font-size: 20px; cursor: pointer; color: #999; }
+.modal-body { padding: 24px; }
+.modal-footer { padding: 16px 24px; border-top: 1px solid #f0f0f0; display: flex; justify-content: flex-end; gap: 12px; }
+
+/* Form */
+.form-group { margin-bottom: 16px; }
+.form-group label { display: block; margin-bottom: 6px; font-size: 13px; color: #666; font-weight: 500; }
+.form-group input, .form-group select, .form-group textarea { width: 100%; padding: 8px 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 13px; }
+.form-group input:focus, .form-group select:focus { outline: none; border-color: #1890ff; }
+.form-row { display: flex; gap: 12px; }
+.form-row .form-group { flex: 1; }
+.form-hint { font-size: 12px; color: #999; margin-top: 4px; }
+
+/* QR Code */
+.qr-container { text-align: center; padding: 20px; }
+.qr-container img { max-width: 240px; border: 1px solid #eee; border-radius: 8px; }
+.qr-tip { margin-top: 12px; color: #666; font-size: 13px; }
+.qr-refresh { margin-top: 12px; }
+
+/* Logs */
+.log-viewer { background: #1e1e1e; color: #d4d4d4; padding: 16px; border-radius: 8px; font-family: 'Consolas', 'Monaco', monospace; font-size: 12px; line-height: 1.6; height: calc(100vh - 200px); overflow-y: auto; white-space: pre-wrap; word-break: break-all; }
+.log-controls { margin-bottom: 12px; display: flex; gap: 12px; align-items: center; }
+
+/* Autocomplete */
+.autocomplete-wrap { position: relative; }
+.autocomplete-list { position: absolute; top: 100%; left: 0; right: 0; background: #fff; border: 1px solid #ddd; border-radius: 0 0 6px 6px; max-height: 200px; overflow-y: auto; z-index: 100; display: none; }
+.autocomplete-list.show { display: block; }
+.autocomplete-item { padding: 8px 12px; cursor: pointer; font-size: 13px; }
+.autocomplete-item:hover { background: #f0f7ff; }
+.autocomplete-item .code { color: #999; font-size: 11px; margin-left: 8px; }
+
+/* Toast */
+.toast { position: fixed; top: 20px; right: 20px; padding: 12px 20px; border-radius: 8px; color: #fff; font-size: 14px; z-index: 2000; opacity: 0; transition: opacity 0.3s; box-shadow: 0 4px 12px rgba(0,0,0,0.15); }
+.toast.show { opacity: 1; }
+.toast.success { background: #52c41a; }
+.toast.error { background: #ff4d4f; }
+.toast.info { background: #1890ff; }
+
+.empty-state { text-align: center; padding: 40px; color: #999; }
+.empty-state .icon { font-size: 48px; margin-bottom: 12px; }
+</style>
+</head>
+<body>
+
+<!-- Login Page -->
+<div class="login-wrap" id="loginPage">
+  <div class="login-box">
+    <h1>🚂 py12306</h1>
+    <p>购票助手管理后台</p>
+    <input type="text" id="loginUsername" placeholder="用户名" value="admin">
+    <input type="password" id="loginPassword" placeholder="密码" value="admin123">
+    <button onclick="doLogin()">登 录</button>
+    <div class="login-error" id="loginError"></div>
+  </div>
+</div>
+
+<!-- Main App -->
+<div class="app" id="mainApp" style="display:none;">
+  <div class="sidebar">
+    <div class="sidebar-header">
+      <h2>🚂 py12306</h2>
+      <span>购票助手管理后台</span>
+    </div>
+    <div class="nav-item active" onclick="switchPage('dashboard', this)">
+      <span class="icon">📊</span> 仪表盘
+    </div>
+    <div class="nav-item" onclick="switchPage('accounts', this)">
+      <span class="icon">👤</span> 账号管理
+    </div>
+    <div class="nav-item" onclick="switchPage('jobs', this)">
+      <span class="icon">🎫</span> 抢票任务
+    </div>
+    <div class="nav-item" onclick="switchPage('logs', this)">
+      <span class="icon">📋</span> 实时日志
+    </div>
+  </div>
+
+  <div class="main">
+    <div class="topbar">
+      <h3 id="pageTitle">仪表盘</h3>
+      <div class="topbar-right">
+        <span class="status-badge" id="statusBadge">● 运行中</span>
+        <button class="logout-btn" onclick="doLogout()">退出登录</button>
+      </div>
+    </div>
+
+    <div class="content">
+      <!-- Dashboard -->
+      <div class="page active" id="page-dashboard">
+        <div class="stats-grid" id="statsGrid"></div>
+        <div class="card">
+          <div class="card-title">系统信息</div>
+          <div id="systemInfo"></div>
+        </div>
+      </div>
+
+      <!-- Accounts -->
+      <div class="page" id="page-accounts">
+        <div class="card">
+          <div class="card-title">
+            12306 账号列表
+            <button class="btn btn-primary" onclick="showAddAccountModal()">+ 添加账号</button>
+          </div>
+          <div id="accountsTable"></div>
+        </div>
+      </div>
+
+      <!-- Jobs -->
+      <div class="page" id="page-jobs">
+        <div class="card">
+          <div class="card-title">
+            抢票任务列表
+            <button class="btn btn-primary" onclick="showAddJobModal()">+ 新建任务</button>
+          </div>
+          <div id="jobsTable"></div>
+        </div>
+      </div>
+
+      <!-- Logs -->
+      <div class="page" id="page-logs">
+        <div class="log-controls">
+          <button class="btn btn-default btn-sm" onclick="refreshLogs()">🔄 刷新</button>
+          <label style="font-size:13px;color:#666;"><input type="checkbox" id="autoScroll" checked> 自动滚动</label>
+          <span style="font-size:12px;color:#999;" id="logStatus"></span>
+        </div>
+        <div class="log-viewer" id="logViewer">加载中...</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Add Account Modal -->
+<div class="modal-overlay" id="accountModal">
+  <div class="modal">
+    <div class="modal-header">
+      <h3>添加 12306 账号</h3>
+      <button class="modal-close" onclick="closeModal('accountModal')">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label>登录方式</label>
+        <select id="accType" onchange="toggleAccountFields()">
+          <option value="qr">扫码登录（推荐）</option>
+          <option value="password">密码登录</option>
+        </select>
+      </div>
+      <div class="form-group" id="accUserNameGroup">
+        <label>12306 用户名/手机号</label>
+        <input type="text" id="accUserName" placeholder="请输入用户名">
+      </div>
+      <div class="form-group" id="accPasswordGroup" style="display:none;">
+        <label>密码</label>
+        <input type="password" id="accPassword" placeholder="请输入密码">
+      </div>
+      <div class="form-hint">扫码登录：添加后点击"扫码登录"按钮，用 12306 APP 扫描二维码即可完成登录。</div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-default" onclick="closeModal('accountModal')">取消</button>
+      <button class="btn btn-primary" onclick="submitAccount()">确认添加</button>
+    </div>
+  </div>
+</div>
+
+<!-- QR Code Modal -->
+<div class="modal-overlay" id="qrModal">
+  <div class="modal" style="width:360px;">
+    <div class="modal-header">
+      <h3>扫码登录 12306</h3>
+      <button class="modal-close" onclick="closeModal('qrModal')">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div class="qr-container">
+        <img id="qrImage" src="" alt="登录二维码" style="display:none;">
+        <div id="qrLoading" style="padding:40px;color:#999;">二维码生成中，请稍候...</div>
+        <div class="qr-tip">请使用 12306 手机 APP 扫描二维码登录</div>
+        <div class="qr-refresh">
+          <button class="btn btn-default btn-sm" onclick="refreshQR()">🔄 刷新二维码</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Add Job Modal -->
+<div class="modal-overlay" id="jobModal">
+  <div class="modal" style="width:560px;">
+    <div class="modal-header">
+      <h3>新建抢票任务</h3>
+      <button class="modal-close" onclick="closeModal('jobModal')">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-row">
+        <div class="form-group">
+          <label>使用账号</label>
+          <select id="jobAccount"></select>
+        </div>
+        <div class="form-group">
+          <label>出发日期（可多个，逗号分隔）</label>
+          <input type="text" id="jobDates" placeholder="2026-10-01,2026-10-02">
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>出发站</label>
+          <div class="autocomplete-wrap">
+            <input type="text" id="jobFrom" placeholder="输入车站名" oninput="searchStation('jobFrom', 'jobFromList')" onfocus="searchStation('jobFrom', 'jobFromList')">
+            <div class="autocomplete-list" id="jobFromList"></div>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>到达站</label>
+          <div class="autocomplete-wrap">
+            <input type="text" id="jobTo" placeholder="输入车站名" oninput="searchStation('jobTo', 'jobToList')" onfocus="searchStation('jobTo', 'jobToList')">
+            <div class="autocomplete-list" id="jobToList"></div>
+          </div>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>乘客姓名（多个用逗号分隔）</label>
+        <input type="text" id="jobMembers" placeholder="张三,李四">
+        <div class="form-hint">乘客必须已添加到该 12306 账号的常用联系人中</div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>座位类型（多个用逗号分隔）</label>
+          <input type="text" id="jobSeats" placeholder="硬卧,硬座,二等座" value="硬卧,硬座">
+        </div>
+        <div class="form-group">
+          <label>指定车次（留空则全部）</label>
+          <input type="text" id="jobTrains" placeholder="G123,K456">
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>出发时间范围</label>
+          <div style="display:flex;gap:8px;align-items:center;">
+            <input type="text" id="jobTimeFrom" placeholder="00:00" value="00:00" style="flex:1;">
+            <span>至</span>
+            <input type="text" id="jobTimeTo" placeholder="24:00" value="24:00" style="flex:1;">
+          </div>
+        </div>
+        <div class="form-group">
+          <label>余票不足时</label>
+          <select id="jobAllowLess">
+            <option value="0">不允许部分提交</option>
+            <option value="1">允许部分乘客提交</option>
+          </select>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-default" onclick="closeModal('jobModal')">取消</button>
+      <button class="btn btn-primary" onclick="submitJob()">创建任务</button>
+    </div>
+  </div>
+</div>
+
+<!-- Passengers Modal -->
+<div class="modal-overlay" id="passengersModal">
+  <div class="modal" style="width:500px;">
+    <div class="modal-header">
+      <h3>乘客列表</h3>
+      <button class="modal-close" onclick="closeModal('passengersModal')">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div id="passengersList"></div>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ============================================================
+// 全局状态
+// ============================================================
+let token = localStorage.getItem('py12306_token') || '';
+let currentQRKey = '';
+let qrPollTimer = null;
+let logPollTimer = null;
+let logLastLine = -1;
+let refreshTimer = null;
+
+const API_BASE = '';
+
+// ============================================================
+// 工具函数
+// ============================================================
+function api(url, options = {}) {
+  const headers = { 'Content-Type': 'application/json', ...(options.headers || {}) };
+  if (token) headers['Authorization'] = 'Bearer ' + token;
+  return fetch(API_BASE + url, { ...options, headers }).then(async r => {
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(data.msg || '请求失败 (' + r.status + ')');
+    return data;
+  });
+}
+
+function showToast(msg, type = 'info') {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = 'toast show ' + type;
+  setTimeout(() => t.className = 'toast', 2500);
+}
+
+function closeModal(id) {
+  document.getElementById(id).classList.remove('show');
+  if (id === 'qrModal' && qrPollTimer) { clearInterval(qrPollTimer); qrPollTimer = null; }
+}
+function showModal(id) { document.getElementById(id).classList.add('show'); }
+
+// ============================================================
+// 登录
+// ============================================================
+function doLogin() {
+  const username = document.getElementById('loginUsername').value;
+  const password = document.getElementById('loginPassword').value;
+  document.getElementById('loginError').textContent = '';
+  api('/user/login', { method: 'POST', body: JSON.stringify({ username, password }) })
+    .then(data => {
+      token = data.access_token;
+      localStorage.setItem('py12306_token', token);
+      document.getElementById('loginPage').style.display = 'none';
+      document.getElementById('mainApp').style.display = 'flex';
+      initApp();
+    })
+    .catch(e => { document.getElementById('loginError').textContent = e.message; });
+}
+
+function doLogout() {
+  token = '';
+  localStorage.removeItem('py12306_token');
+  if (refreshTimer) clearInterval(refreshTimer);
+  if (logPollTimer) clearInterval(logPollTimer);
+  if (qrPollTimer) clearInterval(qrPollTimer);
+  document.getElementById('mainApp').style.display = 'none';
+  document.getElementById('loginPage').style.display = 'flex';
+}
+
+// 检查登录状态
+if (token) {
+  document.getElementById('loginPage').style.display = 'none';
+  document.getElementById('mainApp').style.display = 'flex';
+  initApp();
+}
+
+// ============================================================
+// 页面切换
+// ============================================================
+function switchPage(page, el) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  document.getElementById('page-' + page).classList.add('active');
+  el.classList.add('active');
+  const titles = { dashboard: '仪表盘', accounts: '账号管理', jobs: '抢票任务', logs: '实时日志' };
+  document.getElementById('pageTitle').textContent = titles[page] || '';
+  if (page === 'accounts') loadAccounts();
+  if (page === 'jobs') loadJobs();
+  if (page === 'dashboard') loadDashboard();
+  if (page === 'logs') startLogPolling();
+  else if (logPollTimer) { clearInterval(logPollTimer); logPollTimer = null; }
+}
+
+// ============================================================
+// 初始化
+// ============================================================
+function initApp() {
+  loadDashboard();
+  // 每30秒自动刷新仪表盘和账号状态
+  if (refreshTimer) clearInterval(refreshTimer);
+  refreshTimer = setInterval(() => {
+    if (document.getElementById('page-dashboard').classList.contains('active')) loadDashboard();
+    if (document.getElementById('page-accounts').classList.contains('active')) loadAccounts();
+    if (document.getElementById('page-jobs').classList.contains('active')) loadJobs();
+  }, 30000);
+}
+
+// ============================================================
+// 仪表盘
+// ============================================================
+function loadDashboard() {
+  api('/manage/info').then(info => {
+    const grid = document.getElementById('statsGrid');
+    grid.innerHTML = `
+      <div class="stat-card"><div class="label">配置账号数</div><div class="value blue">${info.account_count}</div></div>
+      <div class="stat-card"><div class="label">已登录账号</div><div class="value green">${info.active_users}</div></div>
+      <div class="stat-card"><div class="label">抢票任务数</div><div class="value orange">${info.job_count}</div></div>
+      <div class="stat-card"><div class="label">运行中任务</div><div class="value green">${info.active_jobs}</div></div>
+      <div class="stat-card"><div class="label">累计查询次数</div><div class="value">${info.query_count}</div></div>
+    `;
+    const sys = document.getElementById('systemInfo');
+    sys.innerHTML = `
+      <table>
+        <tr><th>Web 服务</th><td>${info.web_enabled ? '<span class="badge badge-success">已启用</span>' : '<span class="badge badge-error">未启用</span>'} （端口 ${info.web_port}）</td></tr>
+        <tr><th>集群模式</th><td>${info.cluster_enabled ? '<span class="badge badge-info">已启用</span>' : '<span class="badge badge-warning">单机模式</span>'}</td></tr>
+        <tr><th>CDN 加速</th><td>${info.cdn_enabled ? '<span class="badge badge-success">已启用</span>' : '<span class="badge badge-warning">未启用</span>'}</td></tr>
+        <tr><th>日志输出</th><td>${info.log_enabled ? '<span class="badge badge-success">已启用</span>' : '<span class="badge badge-warning">未启用</span>'} ${info.log_path || ''}</td></tr>
+      </table>
+    `;
+    const badge = document.getElementById('statusBadge');
+    badge.textContent = info.web_enabled ? '● 运行中' : '● 已停止';
+    badge.className = 'status-badge' + (info.web_enabled ? '' : ' offline');
+  }).catch(e => {
+    if (e.message.includes('422') || e.message.includes('401')) doLogout();
+  });
+}
+
+// ============================================================
+// 账号管理
+// ============================================================
+function loadAccounts() {
+  api('/manage/accounts').then(accounts => {
+    const container = document.getElementById('accountsTable');
+    if (!accounts.length) {
+      container.innerHTML = '<div class="empty-state"><div class="icon">👤</div><div>暂无账号，点击右上角"添加账号"开始</div></div>';
+      return;
+    }
+    container.innerHTML = `
+      <table>
+        <thead><tr>
+          <th>Key</th><th>用户名</th><th>登录方式</th><th>状态</th><th>显示名称</th><th>最后心跳</th><th>操作</th>
+        </tr></thead>
+        <tbody>
+          ${accounts.map(a => `
+            <tr>
+              <td>${a.key}</td>
+              <td>${a.user_name || '<span style="color:#999;">未设置</span>'}</td>
+              <td>${a.type === 'qr' ? '<span class="badge badge-info">扫码</span>' : '<span class="badge badge-warning">密码</span>'}</td>
+              <td>${a.is_ready ? '<span class="badge badge-success">已登录</span>' : (a.is_loaded ? '<span class="badge badge-warning">登录中</span>' : '<span class="badge badge-error">未登录</span>')}</td>
+              <td>${a.display_name || '-'}</td>
+              <td>${a.last_heartbeat || '-'}</td>
+              <td>
+                ${a.type === 'qr' ? `<button class="btn btn-sm btn-success" onclick="showQR('${a.key}')">扫码登录</button>` : `<button class="btn btn-sm btn-warning" onclick="reloginAccount('${a.key}')">重新登录</button>`}
+                <button class="btn btn-sm btn-default" onclick="showPassengers('${a.key}')">乘客</button>
+                <button class="btn btn-sm btn-danger" onclick="deleteAccount('${a.key}')">删除</button>
+              </td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    `;
+  }).catch(e => showToast(e.message, 'error'));
+}
+
+function toggleAccountFields() {
+  const type = document.getElementById('accType').value;
+  document.getElementById('accPasswordGroup').style.display = type === 'password' ? 'block' : 'none';
+}
+
+function showAddAccountModal() {
+  document.getElementById('accUserName').value = '';
+  document.getElementById('accPassword').value = '';
+  document.getElementById('accType').value = 'qr';
+  toggleAccountFields();
+  showModal('accountModal');
+}
+
+function submitAccount() {
+  const type = document.getElementById('accType').value;
+  const user_name = document.getElementById('accUserName').value.trim();
+  const password = document.getElementById('accPassword').value;
+  if (type === 'password' && (!user_name || !password)) {
+    showToast('密码登录需要填写用户名和密码', 'error');
+    return;
+  }
+  api('/manage/accounts', { method: 'POST', body: JSON.stringify({ user_name, password, type }) })
+    .then(data => {
+      showToast(data.msg || '添加成功', 'success');
+      closeModal('accountModal');
+      loadAccounts();
+    })
+    .catch(e => showToast(e.message, 'error'));
+}
+
+function deleteAccount(key) {
+  if (!confirm('确定删除账号 ' + key + ' 吗？相关抢票任务也会受影响。')) return;
+  api('/manage/accounts/' + key, { method: 'DELETE' })
+    .then(data => { showToast(data.msg, 'success'); loadAccounts(); })
+    .catch(e => showToast(e.message, 'error'));
+}
+
+function reloginAccount(key) {
+  api('/manage/accounts/' + key + '/relogin', { method: 'POST' })
+    .then(data => { showToast(data.msg, 'success'); loadAccounts(); })
+    .catch(e => showToast(e.message, 'error'));
+}
+
+// ============================================================
+// 二维码登录
+// ============================================================
+function showQR(key) {
+  currentQRKey = key;
+  document.getElementById('qrImage').style.display = 'none';
+  document.getElementById('qrLoading').style.display = 'block';
+  showModal('qrModal');
+  // 先触发重新登录
+  api('/manage/accounts/' + key + '/relogin', { method: 'POST' }).catch(() => {});
+  pollQR();
+}
+
+function pollQR() {
+  if (qrPollTimer) clearInterval(qrPollTimer);
+  let attempts = 0;
+  qrPollTimer = setInterval(() => {
+    attempts++;
+    if (attempts > 60) { // 最多轮询3分钟
+      clearInterval(qrPollTimer);
+      document.getElementById('qrLoading').textContent = '二维码获取超时，请点击刷新';
+      return;
+    }
+    fetch(API_BASE + '/manage/accounts/' + currentQRKey + '/qrcode', {
+      headers: { 'Authorization': 'Bearer ' + token }
+    }).then(r => {
+      if (r.ok) return r.blob();
+      throw new Error('not ready');
+    }).then(blob => {
+      const url = URL.createObjectURL(blob);
+      document.getElementById('qrImage').src = url;
+      document.getElementById('qrImage').style.display = 'inline-block';
+      document.getElementById('qrLoading').style.display = 'none';
+      // 检查是否已登录成功
+      api('/manage/accounts').then(accounts => {
+        const acc = accounts.find(a => a.key === currentQRKey);
+        if (acc && acc.is_ready) {
+          clearInterval(qrPollTimer);
+          showToast('登录成功！', 'success');
+          setTimeout(() => { closeModal('qrModal'); loadAccounts(); }, 1000);
+        }
+      }).catch(() => {});
+    }).catch(() => {
+      // 还没生成，继续等
+    });
+  }, 3000);
+}
+
+function refreshQR() {
+  if (qrPollTimer) clearInterval(qrPollTimer);
+  api('/manage/accounts/' + currentQRKey + '/relogin', { method: 'POST' }).catch(() => {});
+  document.getElementById('qrImage').style.display = 'none';
+  document.getElementById('qrLoading').style.display = 'block';
+  document.getElementById('qrLoading').textContent = '二维码刷新中...';
+  pollQR();
+}
+
+// 关闭二维码弹窗时停止轮询
+document.getElementById('qrModal').addEventListener('click', function(e) {
+  if (e.target === this) { if (qrPollTimer) clearInterval(qrPollTimer); }
+});
+
+// ============================================================
+// 乘客列表
+// ============================================================
+function showPassengers(key) {
+  api('/manage/accounts/' + key + '/passengers').then(passengers => {
+    const list = document.getElementById('passengersList');
+    if (!passengers.length) {
+      list.innerHTML = '<div class="empty-state">暂无乘客数据</div>';
+    } else {
+      list.innerHTML = `
+        <table>
+          <thead><tr><th>序号</th><th>姓名</th><th>身份证号</th><th>手机号</th><th>乘客类型</th></tr></thead>
+          <tbody>
+            ${passengers.map((p, i) => `
+              <tr>
+                <td>${i + 1}</td>
+                <td>${p.name}</td>
+                <td>${p.id_no ? p.id_no.substring(0, 6) + '********' + p.id_no.substring(14) : '-'}</td>
+                <td>${p.mobile || '-'}</td>
+                <td>${p.type == 1 ? '成人' : p.type == 2 ? '儿童' : p.type == 3 ? '学生' : '其他'}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      `;
+    }
+    showModal('passengersModal');
+  }).catch(e => showToast(e.message, 'error'));
+}
+
+// ============================================================
+// 抢票任务管理
+// ============================================================
+function loadJobs() {
+  api('/manage/jobs').then(jobs => {
+    const container = document.getElementById('jobsTable');
+    if (!jobs.length) {
+      container.innerHTML = '<div class="empty-state"><div class="icon">🎫</div><div>暂无抢票任务，点击右上角"新建任务"开始</div></div>';
+      return;
+    }
+    container.innerHTML = `
+      <table>
+        <thead><tr>
+          <th>任务名称</th><th>使用账号</th><th>出发日期</th><th>路线</th><th>乘客</th><th>座位</th><th>状态</th><th>操作</th>
+        </tr></thead>
+        <tbody>
+          ${jobs.map(j => {
+            const stations = Array.isArray(j.stations) ? j.stations[0] : j.stations;
+            return `
+            <tr>
+              <td>${j.name}</td>
+              <td>${j.account_key}</td>
+              <td>${(j.left_dates || []).join(', ')}</td>
+              <td>${stations.left} → ${stations.arrive}</td>
+              <td>${(j.members || []).join(', ')}</td>
+              <td>${(j.seats || []).join(', ')}</td>
+              <td>${j.active ? '<span class="badge badge-success">运行中</span>' : '<span class="badge badge-warning">待启动</span>'}</td>
+              <td><button class="btn btn-sm btn-danger" onclick="deleteJob('${j.name.replace(/'/g, "\\'")}')">删除</button></td>
+            </tr>
+          `;}).join('')}
+        </tbody>
+      </table>
+    `;
+  }).catch(e => showToast(e.message, 'error'));
+}
+
+function showAddJobModal() {
+  // 加载账号列表
+  api('/manage/accounts').then(accounts => {
+    const select = document.getElementById('jobAccount');
+    const ready = accounts.filter(a => a.is_ready);
+    if (!ready.length) {
+      showToast('请先添加并登录 12306 账号', 'warning');
+      return;
+    }
+    select.innerHTML = ready.map(a => `<option value="${a.key}">${a.display_name || a.user_name} (${a.key})</option>`).join('');
+    // 清空表单
+    ['jobDates', 'jobFrom', 'jobTo', 'jobMembers', 'jobTrains'].forEach(id => document.getElementById(id).value = '');
+    document.getElementById('jobSeats').value = '硬卧,硬座';
+    document.getElementById('jobTimeFrom').value = '00:00';
+    document.getElementById('jobTimeTo').value = '24:00';
+    showModal('jobModal');
+  }).catch(e => showToast(e.message, 'error'));
+}
+
+function submitJob() {
+  const account_key = document.getElementById('jobAccount').value;
+  const dates = document.getElementById('jobDates').value.split(/[,，]/).map(s => s.trim()).filter(Boolean);
+  const from = document.getElementById('jobFrom').value.trim();
+  const to = document.getElementById('jobTo').value.trim();
+  const members = document.getElementById('jobMembers').value.split(/[,，]/).map(s => s.trim()).filter(Boolean);
+  const seats = document.getElementById('jobSeats').value.split(/[,，]/).map(s => s.trim()).filter(Boolean);
+  const trains = document.getElementById('jobTrains').value.split(/[,，]/).map(s => s.trim()).filter(Boolean);
+  const timeFrom = document.getElementById('jobTimeFrom').value || '00:00';
+  const timeTo = document.getElementById('jobTimeTo').value || '24:00';
+  const allowLess = document.getElementById('jobAllowLess').value;
+
+  if (!dates.length) return showToast('请填写出发日期', 'error');
+  if (!from || !to) return showToast('请填写出发站和到达站', 'error');
+  if (!members.length) return showToast('请填写乘客姓名', 'error');
+  if (!seats.length) return showToast('请填写座位类型', 'error');
+
+  const body = {
+    account_key, left_dates: dates,
+    stations: { left: from, arrive: to },
+    members, seats, train_numbers: trains, except_train_numbers: [],
+    allow_less_member: parseInt(allowLess),
+    period: { from: timeFrom, to: timeTo }
+  };
+
+  api('/manage/jobs', { method: 'POST', body: JSON.stringify(body) })
+    .then(data => {
+      showToast(data.msg || '任务创建成功', 'success');
+      closeModal('jobModal');
+      loadJobs();
+    })
+    .catch(e => showToast(e.message, 'error'));
+}
+
+function deleteJob(name) {
+  if (!confirm('确定删除任务 "' + name + '" 吗？')) return;
+  api('/manage/jobs/' + encodeURIComponent(name), { method: 'DELETE' })
+    .then(data => { showToast(data.msg, 'success'); loadJobs(); })
+    .catch(e => showToast(e.message, 'error'));
+}
+
+// ============================================================
+// 车站搜索自动补全
+// ============================================================
+let stationCache = {};
+function searchStation(inputId, listId) {
+  const q = document.getElementById(inputId).value.trim();
+  const list = document.getElementById(listId);
+  if (!q) { list.classList.remove('show'); return; }
+  if (stationCache[q]) {
+    renderStationList(list, stationCache[q], inputId);
+    return;
+  }
+  api('/manage/stations?q=' + encodeURIComponent(q)).then(data => {
+    stationCache[q] = data;
+    renderStationList(list, data, inputId);
+  }).catch(() => {});
+}
+
+function renderStationList(list, data, inputId) {
+  if (!data.length) { list.classList.remove('show'); return; }
+  list.innerHTML = data.map(s =>
+    `<div class="autocomplete-item" onclick="selectStation('${inputId}', '${s.name}')">${s.name}<span class="code">${s.code}</span></div>`
+  ).join('');
+  list.classList.add('show');
+}
+
+function selectStation(inputId, name) {
+  document.getElementById(inputId).value = name;
+  document.getElementById(inputId + 'List').classList.remove('show');
+}
+
+// 点击外部关闭自动补全
+document.addEventListener('click', e => {
+  if (!e.target.closest('.autocomplete-wrap')) {
+    document.querySelectorAll('.autocomplete-list').forEach(l => l.classList.remove('show'));
+  }
+});
+
+// ============================================================
+// 实时日志
+// ============================================================
+function startLogPolling() {
+  logLastLine = -1;
+  document.getElementById('logViewer').innerHTML = '';
+  if (logPollTimer) clearInterval(logPollTimer);
+  refreshLogs();
+  logPollTimer = setInterval(refreshLogs, 3000);
+}
+
+function refreshLogs() {
+  const viewer = document.getElementById('logViewer');
+  const status = document.getElementById('logStatus');
+  api('/log/output?line=' + logLastLine + '&limit=50').then(data => {
+    if (data.data && data.data.length) {
+      const text = data.data.join('');
+      viewer.textContent += text;
+      logLastLine = data.last_line;
+      if (document.getElementById('autoScroll').checked) {
+        viewer.scrollTop = viewer.scrollHeight;
+      }
+    }
+    status.textContent = '最后更新: ' + new Date().toLocaleTimeString() + ' | 行号: ' + logLastLine;
+  }).catch(e => {
+    status.textContent = '日志获取失败: ' + e.message;
+  });
+}
+
+// 回车登录
+document.getElementById('loginPassword').addEventListener('keypress', e => {
+  if (e.key === 'Enter') doLogin();
+});
+</script>
+</body>
+</html>

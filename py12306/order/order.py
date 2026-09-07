@@ -205,7 +205,6 @@ class Order:
         until = self.user_fail_cooldown_until.get(self.user_ins.key, 0)
         if time_int() < until:
             remaining = until - time_int()
-            print('[DEBUG cooldown] user={} skip remaining={}s'.format(self.user_ins.key, remaining))
             return False
 
         order_request_res = self.submit_order_request()
@@ -312,9 +311,6 @@ class Order:
             result = response.json()
         except Exception:
             result = {}
-        print('[DEBUG submitOrder] status={} url={} data={} result={}'.format(
-            response.status_code, API_SUBMIT_ORDER_REQUEST, list(data.keys()),
-            str(result)[:300] if result else 'EMPTY'))
         if result.get('data') == '0':
             OrderLog.add_quick_log(OrderLog.MESSAGE_SUBMIT_ORDER_REQUEST_SUCCESS).flush()
             return True
@@ -363,17 +359,9 @@ class Order:
             result = response.json()
         except Exception:
             result = {}
-        print('[DEBUG checkOrderInfo] status={} url={} has_token={} is_slide={} result={}'.format(
-            response.status_code, API_CHECK_ORDER_INFO,
-            bool(self.user_ins.global_repeat_submit_token), self.is_slide,
-            str(result)[:400] if result else 'EMPTY'))
         # 精确诊断 Dict.get 行为
-        print('[DEBUG checkOrderInfo] result_type={} data_type={} has_data={}'.format(
-            type(result).__name__, type(result.get('data')).__name__, 'data' in result))
         _ss = result.get('data.submitStatus')
-        _ss2 = result.get('data').get('submitStatus') if result.get('data') else 'NO_DATA'
         _ss3 = result['data']['submitStatus'] if 'data' in result else 'NO_DATA'
-        print('[DEBUG checkOrderInfo] submitStatus via dot={} via chained={} via raw={}'.format(_ss, _ss2, _ss3))
         if _ss or _ss3:  # 成功
             # ifShowPassCode / ifShowPassCodeTime 需要验证码(12306 改版后字段名变化)
             OrderLog.add_quick_log(OrderLog.MESSAGE_CHECK_ORDER_INFO_SUCCESS).flush()
@@ -434,8 +422,6 @@ class Order:
             result = response.json()
         except Exception:
             result = {}
-        print('[DEBUG getQueueCount] status={} result={}'.format(
-            response.status_code, str(result)[:400] if result else 'EMPTY'))
         if result.get('status', False):  # 成功
             """
             "data": {
@@ -508,7 +494,6 @@ class Order:
         # 直接走失败冷却,不再继续,避免 KeyError/TypeError 把整条 order 链弄崩
         tif = self.user_ins.ticket_info_for_passenger_form
         if not tif or not isinstance(tif, dict):
-            print('[DEBUG confirmSingle] ticket_info_for_passenger_form missing/invalid, skip')
             return self._mark_fail_and_return()
         data = {  #
             'passengerTicketStr': self.passenger_ticket_str,
@@ -535,8 +520,6 @@ class Order:
             result = response.json()
         except Exception:
             result = {}
-        print('[DEBUG confirmSingle] status={} result={}'.format(
-            response.status_code, str(result)[:400] if result else 'EMPTY'))
 
         # 用 raw 访问避免 Dict.get 在某些情况下返回 None
         data_obj = result.get('data') if result.get('data') else {}
