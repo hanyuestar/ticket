@@ -10,7 +10,7 @@ from py12306.user.user import User
 user = Blueprint('user', __name__)
 
 
-@user.route('/login', methods=['POST'])
+@user.route('/user/login', methods=['POST'])
 def login():
     """
     用户登录

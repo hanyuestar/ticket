@@ -38,6 +38,10 @@ services:
       timeout: 10s
       retries: 3
       start_period: 15s
+    # 直接接入 Docker 内置默认 bridge 网络（docker0），
+    # 不创建 xxx_default 项目网络，避免群晖等环境地址池耗尽报错。
+    # 注意：默认 bridge 下容器间仅能通过 IP 互访（不支持容器名解析）。
+    network_mode: bridge
 
 volumes:
   py12306_data:
