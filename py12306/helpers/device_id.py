@@ -27,8 +27,11 @@
       预热都白等几十秒。
 """
 import asyncio
+import logging
 import os
 import threading
+
+logger = logging.getLogger(__name__)
 
 # 与 query.py 中保持一致的浏览器 UA（标准 Chrome UA，避免 HeadlessChrome 字样）
 BROWSER_UA = (
@@ -144,6 +147,8 @@ def _run_browser_flow(wait_rail):
     candidates = _normalize_candidates()
     if not candidates:
         # 本机无任何可用浏览器，熔断本进程的浏览器方案
+        logger.warning('未找到可用浏览器(系统 Chrome/Edge/Chromium 均不存在，'
+                       'pyppeteer 自带 Chromium 未下载)，浏览器方案已熔断')
         _browser_disabled.set()
         return None
     for executable in candidates:
@@ -151,8 +156,11 @@ def _run_browser_flow(wait_rail):
             result = _run_with_new_loop(executable, wait_rail)
             if result:
                 return result
-        except Exception:
+            logger.warning('浏览器候选 [%s] 未采到目标 Cookie', executable or 'pyppeteer-chromium')
+        except Exception as exc:
             # 当前浏览器候选失败，尝试下一个
+            logger.warning('浏览器候选 [%s] 执行失败: %s: %s',
+                           executable or 'pyppeteer-chromium', type(exc).__name__, exc)
             continue
     # 所有候选均失败，熔断本进程的浏览器方案
     _browser_disabled.set()

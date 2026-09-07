@@ -10,7 +10,7 @@ from py12306.helpers.request import Request
 from py12306.log.query_log import QueryLog
 from py12306.query.job import Job
 from py12306.helpers.api import API_QUERY_INIT_PAGE, API_GET_BROWSER_DEVICE_ID
-from py12306.helpers.device_id import fetch_device_id_by_browser, fetch_browser_session, is_browser_fingerprint_available
+from py12306.helpers.device_id import fetch_browser_session, is_browser_fingerprint_available
 
 
 @singleton
@@ -40,7 +40,10 @@ class Query:
         self.last_reject_refresh_at = 0
         self._reject_refresh_lock = threading.Lock()
         self._browser_warmed = False
-        self.warm_up_session_by_browser()
+        self._warm_up_started = False
+        self._warm_up_lock = threading.Lock()
+        # 后台预热，绝不阻塞 __init__（Web 请求线程会首次实例化本类）
+        self.begin_warm_up_async()
         self.request_device_id()
         self.cluster = Cluster()
         self.update_query_interval()
@@ -130,6 +133,25 @@ class Query:
         self.jobs.append(job)
         return job
 
+    def begin_warm_up_async(self):
+        """
+        后台线程启动会话预热（不阻塞调用方）。
+
+        Query() 会被 Web 请求线程首次实例化（如新建任务接口），
+        浏览器预热耗时 10~40 秒，绝不能在 __init__ 中同步执行，
+        否则 Web 接口会因等待预热而超时（表现为"新建任务按钮没反应"）。
+        """
+        if self._browser_warmed or self._warm_up_started:
+            return
+        self._warm_up_started = True
+        threading.Thread(target=self._warm_up_once, name='session-warm-up', daemon=True).start()
+
+    def _warm_up_once(self):
+        try:
+            self.warm_up_session_by_browser()
+        except Exception as exc:
+            QueryLog.add_quick_log('会话预热线程异常: {}'.format(exc)).flush()
+
     def warm_up_session_by_browser(self):
         """
         无头浏览器会话预热（应对 12306 会话风控的核心手段）。
@@ -139,24 +161,35 @@ class Query:
         JSESSIONID / BIGipServerotn / SF_cookie_2 等）。用无头浏览器打开
         一次查询页，把整套 Cookie + UA 导入本会话后，查询即可恢复 200。
 
+        注意：本方法耗时 10~40 秒，供后台线程 / 查询工作线程调用；
+        Web 请求链路请使用 begin_warm_up_async()。
+        进程内同时只允许一次预热（锁保护），并发调用直接跳过。
+
         :return: True 表示预热成功
         """
-        self._browser_warmed = True  # 无论成败均标记，避免后续重复开浏览器
-        if not is_browser_fingerprint_available():
-            QueryLog.add_quick_log('浏览器方案不可用(pyppeteer 未安装或已熔断)，跳过会话预热').flush()
+        acquired = self._warm_up_lock.acquire(timeout=2)
+        if not acquired:
+            QueryLog.add_quick_log('已有会话预热在进行，跳过本次预热').flush()
             return False
-        QueryLog.add_quick_log('正在通过无头浏览器预热会话(约需 10~30 秒)...').flush()
-        result = fetch_browser_session()
-        if not result:
-            QueryLog.add_quick_log('无头浏览器会话预热失败，将按原流程继续').flush()
-            return False
-        self.session.cookies.update(result['cookies'])
-        self.session.headers.update({'User-Agent': result['user_agent']})
-        QueryLog.add_quick_log(
-            '会话预热成功：已导入 {} 个浏览器 Cookie(含 {})'.format(
-                len(result['cookies']), '/'.join(sorted(result['cookies'])[:4]))
-        ).flush()
-        return True
+        try:
+            self._browser_warmed = True  # 无论成败均标记，避免后续重复开浏览器
+            if not is_browser_fingerprint_available():
+                QueryLog.add_quick_log('浏览器方案不可用(pyppeteer 未安装或已熔断)，跳过会话预热').flush()
+                return False
+            QueryLog.add_quick_log('正在通过无头浏览器预热会话(约需 10~40 秒)...').flush()
+            result = fetch_browser_session()
+            if not result:
+                QueryLog.add_quick_log('无头浏览器会话预热失败，将按原流程继续').flush()
+                return False
+            self.session.cookies.update(result['cookies'])
+            self.session.headers.update({'User-Agent': result['user_agent']})
+            QueryLog.add_quick_log(
+                '会话预热成功：已导入 {} 个浏览器 Cookie(含 {})'.format(
+                    len(result['cookies']), '/'.join(sorted(result['cookies'])[:4]))
+            ).flush()
+            return True
+        finally:
+            self._warm_up_lock.release()
 
     def request_device_id(self, force_renew = False):
         """
@@ -164,7 +197,8 @@ class Query:
 
         获取优先级：
             1. env.py 手动配置 (CACHE_RAIL_ID_ENABLED=1 + RAIL_EXPIRATION/RAIL_DEVICEID)
-            2. 无头浏览器方案 (helpers/device_id.py，由 12306 自家指纹 JS 种 Cookie，抗算法改版)
+            2. 无头浏览器会话预热顺路导入（begin_warm_up_async / handle_query_rejected，
+               指纹 Cookie 若被 12306 种下会随会话 Cookie 一起导入，本方法不再单独开浏览器）
             3. 旧版 logdevice 流程（保底；12306 已加固，大概率 302 失败）
 
         注：2026-09 实测余票查询并不强校验 RAIL_DEVICEID（会话预热即可通过），
@@ -182,15 +216,9 @@ class Query:
             })
             QueryLog.add_quick_log('设备指纹已从配置载入 (CACHE_RAIL_ID_ENABLED=1)').flush()
             return
-        if is_browser_fingerprint_available() and not self._browser_warmed:
-            # 会话预热已由 warm_up_session_by_browser 完成时不再单独开浏览器
-            QueryLog.add_quick_log('正在通过无头浏览器获取设备指纹(约需 10~40 秒)...').flush()
-            result = fetch_device_id_by_browser()
-            if result:
-                self.session.cookies.update(result)
-                QueryLog.add_quick_log('设备指纹获取成功(无头浏览器)').flush()
-                return
-            QueryLog.add_quick_log('无头浏览器获取设备指纹失败，回退旧版 logdevice 流程...').flush()
+        # 浏览器方案由会话预热顺路完成（指纹 Cookie 随会话 Cookie 一起导入），
+        # 此处不再单独开浏览器——request_device_id 会在 __init__ 等 Web 链路
+        # 中被调用，开浏览器会阻塞请求几十秒。
         if 'pjialin' not in API_GET_BROWSER_DEVICE_ID:
             return self.request_device_id2()
         response = self.session.get(API_GET_BROWSER_DEVICE_ID)
